@@ -21,7 +21,7 @@ const Booking: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [seniors, setSeniors] = useState(0);
     // Step 2
     const [dbServices, setDbServices] = useState<ServiceItem[]>([]);
-    const [guestServices, setGuestServices] = useState<Record<number, string>>({});
+    const [guestServices, setGuestServices] = useState<Record<number, string[]>>({});
     // Step 3
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
     const [selectedSlot, setSelectedSlot] = useState('');
@@ -75,13 +75,40 @@ const Booking: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     const calcTotal = () => {
         let total = adults * PRICES.adult + children * PRICES.child + seniors * PRICES.senior;
-        Object.values(guestServices).forEach(sId => {
-            if (sId) {
-                const svc = dbServices.find(s => s.id === sId);
-                if (svc) total += svc.price;
+        (Object.values(guestServices) as string[][]).forEach(svcIds => {
+            if (svcIds) {
+                svcIds.forEach(sId => {
+                    const svc = dbServices.find(s => s.id === sId);
+                    if (svc) total += svc.price;
+                });
             }
         });
         return total;
+    };
+
+    const toggleService = (guestIdx: number, serviceId: string) => {
+        setGuestServices(prev => {
+            const current = prev[guestIdx] || [];
+            if (current.includes(serviceId)) {
+                const updated = current.filter(id => id !== serviceId);
+                if (updated.length === 0) {
+                    const copy = { ...prev };
+                    delete copy[guestIdx];
+                    return copy;
+                }
+                return { ...prev, [guestIdx]: updated };
+            } else {
+                return { ...prev, [guestIdx]: [...current, serviceId] };
+            }
+        });
+    };
+
+    const guestServiceCount = (guestIdx: number) => (guestServices[guestIdx] || []).length;
+    const guestServiceTotal = (guestIdx: number) => {
+        return (guestServices[guestIdx] || []).reduce((sum, sId) => {
+            const svc = dbServices.find(s => s.id === sId);
+            return sum + (svc?.price || 0);
+        }, 0);
     };
 
     const canGoNext = () => {
@@ -98,9 +125,11 @@ const Booking: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setError('');
 
         const dateStr = selectedDate.toISOString().split('T')[0];
-        const servicesData = Object.entries(guestServices).map(([idx, sId]) => {
-            const svc = dbServices.find(s => s.id === sId);
-            return { guestIndex: Number(idx), serviceId: sId, serviceName: svc?.title || '', price: svc?.price || 0 };
+        const servicesData = (Object.entries(guestServices) as [string, string[]][]).flatMap(([idx, svcIds]) => {
+            return svcIds.map(sId => {
+                const svc = dbServices.find(s => s.id === sId);
+                return { guestIndex: Number(idx), serviceId: sId, serviceName: svc?.title || '', price: svc?.price || 0 };
+            });
         }).filter(s => s.serviceId);
 
         try {
@@ -289,44 +318,46 @@ const Booking: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                 <span className="material-icons-outlined text-accent text-2xl" aria-hidden="true">spa</span>
                                 <h2 className="font-display text-xl sm:text-2xl text-stone-800 dark:text-stone-100">{t.booking.selectService}</h2>
                             </div>
-                            <p className="text-sm text-stone-500 mb-6">{t.booking.serviceFor} {totalGuests} {t.booking.guest.toLowerCase()}{totalGuests > 1 ? 's' : ''}</p>
+                            <p className="text-sm text-stone-500 mb-6">{t.booking.serviceFor} {totalGuests} {t.booking.guest.toLowerCase()}{totalGuests > 1 ? 's' : ''} — selección múltiple</p>
 
                             <div className="space-y-4">
                                 {guestLabels.map((g, idx) => (
                                     <div key={idx} className="p-4 rounded-lg bg-stone-50 dark:bg-stone-800/50 border border-stone-200 dark:border-stone-700">
-                                        <p className="text-sm font-bold text-stone-700 dark:text-stone-300 mb-3 flex items-center gap-2">
-                                            <span className="material-icons-outlined text-base text-primary" aria-hidden="true">person</span>
-                                            {g.label}
-                                        </p>
+                                        <div className="flex items-center justify-between mb-3">
+                                            <p className="text-sm font-bold text-stone-700 dark:text-stone-300 flex items-center gap-2">
+                                                <span className="material-icons-outlined text-base text-primary" aria-hidden="true">person</span>
+                                                {g.label}
+                                            </p>
+                                            {guestServiceCount(idx) > 0 && (
+                                                <span className="text-xs font-bold text-accent">
+                                                    {guestServiceCount(idx)} servicio{guestServiceCount(idx) > 1 ? 's' : ''} · +{formatCOP(guestServiceTotal(idx))}
+                                                </span>
+                                            )}
+                                        </div>
                                         <div className="space-y-2">
-                                            {/* No service option */}
-                                            <label className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border transition-all
-                                                ${!guestServices[idx] ? 'border-primary bg-primary/5' : 'border-stone-200 dark:border-stone-600 hover:border-primary/40'}`}>
-                                                <input
-                                                    type="radio"
-                                                    name={`svc-${idx}`}
-                                                    checked={!guestServices[idx]}
-                                                    onChange={() => { const gs = { ...guestServices }; delete gs[idx]; setGuestServices(gs); }}
-                                                    className="accent-primary"
-                                                />
-                                                <span className="text-sm text-stone-600 dark:text-stone-400">{t.booking.noService}</span>
-                                                <span className="ml-auto text-xs text-stone-400">—</span>
-                                            </label>
-                                            {/* Treatment options */}
-                                            {treatments.map(svc => (
-                                                <label key={svc.id} className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border transition-all
-                                                    ${guestServices[idx] === svc.id ? 'border-accent bg-accent/5' : 'border-stone-200 dark:border-stone-600 hover:border-accent/40'}`}>
-                                                    <input
-                                                        type="radio"
-                                                        name={`svc-${idx}`}
-                                                        checked={guestServices[idx] === svc.id}
-                                                        onChange={() => setGuestServices(prev => ({ ...prev, [idx]: svc.id }))}
-                                                        className="accent-accent"
-                                                    />
-                                                    <span className="text-sm text-stone-700 dark:text-stone-200 flex-1">{svc.title}</span>
-                                                    <span className="text-xs font-bold text-accent whitespace-nowrap">+{formatCOP(svc.price)}</span>
-                                                </label>
-                                            ))}
+                                            {/* Treatment options as checkboxes */}
+                                            {treatments.map(svc => {
+                                                const isChecked = (guestServices[idx] || []).includes(svc.id);
+                                                return (
+                                                    <label key={svc.id} className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border transition-all
+                                                        ${isChecked ? 'border-accent bg-accent/5 shadow-sm' : 'border-stone-200 dark:border-stone-600 hover:border-accent/40'}`}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isChecked}
+                                                            onChange={() => toggleService(idx, svc.id)}
+                                                            className="accent-accent w-4 h-4 rounded"
+                                                        />
+                                                        <span className="text-sm text-stone-700 dark:text-stone-200 flex-1">{svc.title}</span>
+                                                        <span className={`text-xs font-bold whitespace-nowrap ${isChecked ? 'text-accent' : 'text-stone-400'}`}>+{formatCOP(svc.price)}</span>
+                                                    </label>
+                                                );
+                                            })}
+                                            {guestServiceCount(idx) === 0 && (
+                                                <p className="text-xs text-stone-400 italic px-1 pt-1 flex items-center gap-1">
+                                                    <span className="material-icons-outlined text-xs">info</span>
+                                                    Solo entrada — sin servicios adicionales
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -447,15 +478,17 @@ const Booking: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                         <span className="text-stone-500">{t.booking.senior} × {seniors}</span>
                                         <span className="text-stone-700 dark:text-stone-300">{formatCOP(seniors * PRICES.senior)}</span>
                                     </div>}
-                                    {Object.entries(guestServices).map(([idx, sId]) => {
-                                        const svc = dbServices.find(s => s.id === sId);
-                                        if (!svc) return null;
-                                        return (
-                                            <div key={idx} className="flex justify-between">
-                                                <span className="text-stone-500">{svc.title} ({guestLabels[Number(idx)]?.label})</span>
-                                                <span className="text-accent font-medium">{formatCOP(svc.price)}</span>
-                                            </div>
-                                        );
+                                    {(Object.entries(guestServices) as [string, string[]][]).flatMap(([idx, svcIds]) => {
+                                        return svcIds.map(sId => {
+                                            const svc = dbServices.find(s => s.id === sId);
+                                            if (!svc) return null;
+                                            return (
+                                                <div key={`${idx}-${sId}`} className="flex justify-between">
+                                                    <span className="text-stone-500">{svc.title} ({guestLabels[Number(idx)]?.label})</span>
+                                                    <span className="text-accent font-medium">{formatCOP(svc.price)}</span>
+                                                </div>
+                                            );
+                                        });
                                     })}
                                     <div className="border-t border-stone-200 dark:border-stone-700 pt-3 mt-3 flex justify-between">
                                         <span className="font-bold text-stone-800 dark:text-stone-100">{t.booking.total}</span>
@@ -484,9 +517,11 @@ const Booking: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             <div className="info"><span>Fecha:</span> {selectedDate?.toLocaleDateString('es-CO')} — {selectedSlot}</div>
                             <div className="info"><span>{t.booking.entries}:</span> {adults} {t.booking.adult}, {children} {t.booking.child}, {seniors} {t.booking.senior}</div>
                             {Object.keys(guestServices).length > 0 && (
-                                <div className="info"><span>{t.booking.services}:</span> {Object.entries(guestServices).map(([idx, sId]) => {
-                                    const svc = dbServices.find(s => s.id === sId);
-                                    return svc ? `${guestLabels[Number(idx)]?.label}: ${svc.title}` : '';
+                                <div className="info"><span>{t.booking.services}:</span> {(Object.entries(guestServices) as [string, string[]][]).flatMap(([idx, svcIds]) => {
+                                    return svcIds.map(sId => {
+                                        const svc = dbServices.find(s => s.id === sId);
+                                        return svc ? `${guestLabels[Number(idx)]?.label}: ${svc.title}` : '';
+                                    });
                                 }).filter(Boolean).join(', ')}</div>
                             )}
                             <div className="total">{t.booking.total}: {formatCOP(calcTotal())}</div>
