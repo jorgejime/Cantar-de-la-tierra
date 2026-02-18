@@ -36,6 +36,7 @@ const Booking: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [ticketCode, setTicketCode] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
     const ticketRef = useRef<HTMLDivElement>(null);
 
@@ -46,6 +47,12 @@ const Booking: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         supabase.from('services').select('id, title, price, category').order('created_at')
             .then(({ data }) => {
                 if (data) setDbServices(data as ServiceItem[]);
+            });
+
+        // Load logo
+        supabase.from('site_config').select('value').eq('key', 'logo_url').single()
+            .then(({ data }) => {
+                if (data) setLogoUrl(data.value);
             });
     }, []);
 
@@ -171,16 +178,23 @@ const Booking: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         w.document.write(`<!DOCTYPE html><html><head><title>Ticket ${ticketCode}</title>
             <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Lato:wght@400;700&display=swap" rel="stylesheet">
             <style>*{margin:0;box-sizing:border-box;font-family:'Lato',sans-serif}body{padding:30px;max-width:450px;margin:0 auto}
-            .logo{font-family:'Playfair Display',serif;font-size:24px;text-align:center;margin-bottom:20px;color:#3F606A}
+            .logo-container{text-align:center;margin-bottom:20px}
+            .logo{max-height:80px;max-width:200px;object-fit:contain}
+            .logo-text{font-family:'Playfair Display',serif;font-size:24px;text-align:center;margin-bottom:20px;color:#3F606A}
             .code{font-size:32px;font-weight:bold;text-align:center;letter-spacing:4px;color:#8C6145;margin:20px 0;padding:16px;border:2px dashed #BA9269;border-radius:8px}
             .info{margin:12px 0;padding:8px 0;border-bottom:1px solid #eee}.info span{font-weight:bold}
+            .services-list{margin-top:4px;padding-left:0;list-style:none}
+            .services-list li{font-size:13px;color:#555;padding-left:10px;border-left:2px solid #ddd;margin-bottom:4px}
             .msg{text-align:center;color:#666;font-size:13px;margin-top:24px;padding-top:16px;border-top:2px solid #3F606A}
             .total{font-size:20px;font-weight:bold;color:#3F606A;text-align:right;margin-top:16px}
             @media print{body{padding:15px}}</style></head><body>`);
         w.document.write(ticketRef.current.innerHTML);
         w.document.write('</body></html>');
         w.document.close();
-        w.print();
+        // Give time for image to load before printing
+        setTimeout(() => {
+            w.print();
+        }, 500);
     };
 
     /* ── Counter component ──────── */
@@ -509,7 +523,13 @@ const Booking: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         <h2 className="font-display text-2xl sm:text-3xl text-stone-800 dark:text-stone-100 mb-2">{t.booking.ticketTitle}</h2>
 
                         <div ref={ticketRef}>
-                            <p className="logo">Cantar de la Tierra</p>
+                            <div className="logo-container">
+                                {logoUrl ? (
+                                    <img src={logoUrl} alt="Cantar de la Tierra" className="logo" />
+                                ) : (
+                                    <p className="logo-text">Cantar de la Tierra</p>
+                                )}
+                            </div>
                             <div className="code">{ticketCode}</div>
                             <div className="info"><span>{t.booking.name}:</span> {name}</div>
                             <div className="info"><span>{t.booking.email}:</span> {email}</div>
@@ -517,12 +537,17 @@ const Booking: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             <div className="info"><span>Fecha:</span> {selectedDate?.toLocaleDateString('es-CO')} — {selectedSlot}</div>
                             <div className="info"><span>{t.booking.entries}:</span> {adults} {t.booking.adult}, {children} {t.booking.child}, {seniors} {t.booking.senior}</div>
                             {Object.keys(guestServices).length > 0 && (
-                                <div className="info"><span>{t.booking.services}:</span> {(Object.entries(guestServices) as [string, string[]][]).flatMap(([idx, svcIds]) => {
-                                    return svcIds.map(sId => {
-                                        const svc = dbServices.find(s => s.id === sId);
-                                        return svc ? `${guestLabels[Number(idx)]?.label}: ${svc.title}` : '';
-                                    });
-                                }).filter(Boolean).join(', ')}</div>
+                                <div className="info">
+                                    <span style={{ display: 'block', marginBottom: '4px' }}>{t.booking.services}:</span>
+                                    <ul className="services-list mt-2 pl-0 list-none text-left">
+                                        {(Object.entries(guestServices) as [string, string[]][]).flatMap(([idx, svcIds]) => {
+                                            return svcIds.map(sId => {
+                                                const svc = dbServices.find(s => s.id === sId);
+                                                return svc ? <li key={`${idx}-${sId}`} className="text-sm text-stone-600 dark:text-stone-400 pl-3 border-l-2 border-stone-200 dark:border-stone-700 mb-1">{guestLabels[Number(idx)]?.label}: {svc.title}</li> : null;
+                                            });
+                                        })}
+                                    </ul>
+                                </div>
                             )}
                             <div className="total">{t.booking.total}: {formatCOP(calcTotal())}</div>
                             <p className="msg">{t.booking.ticketMsg}</p>
