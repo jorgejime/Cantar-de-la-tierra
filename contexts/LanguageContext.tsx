@@ -63,30 +63,49 @@ const translations = {
       back: "Volver al Inicio",
       title: "Reserva tu",
       titleHighlight: "Experiencia",
-      desc: "Seleccione su fecha ideal y el tratamiento deseado para comenzar su viaje de relajación y bienestar profundo.",
-      step1: "Seleccione Fecha",
-      step2: "Seleccione Hora",
-      step3: "Servicios",
-      personalData: "Datos Personales",
-      name: "Nombre Completo",
-      email: "Email",
-      phone: "Teléfono",
-      date: "Fecha",
-      time: "Hora",
-      service: "Servicio",
-      total: "Total a pagar",
-      confirm: "Confirmar Reserva",
-      disclaimer: "Al confirmar, aceptas nuestra política de cancelación de 24 horas.",
+      step1: "Entradas",
+      step2: "Servicios",
+      step3: "Fecha",
+      step4: "Ticket",
+      stepOf: "de",
+      next: "Continuar",
+      prev: "Atrás",
+      adult: "Adulto",
+      child: "Niño (6-12)",
+      senior: "Adulto Mayor (60+)",
+      adultPrice: "75.000",
+      childPrice: "40.000",
+      seniorPrice: "60.000",
+      howMany: "¿Cuántas personas asistirán?",
+      perPerson: "/ persona",
+      serviceFor: "Servicio para",
+      guest: "Visitante",
+      selectService: "Selecciona un servicio",
+      noService: "Solo entrada (sin servicio adicional)",
+      selectDate: "Selecciona una fecha",
+      selectTime: "Horario disponible",
+      spotsLeft: "cupos disponibles",
+      full: "Agotado",
+      yourData: "Tus datos de contacto",
+      name: "Nombre completo",
+      email: "Correo electrónico",
+      phone: "Celular / WhatsApp",
+      summary: "Resumen",
+      entries: "Entradas",
+      services: "Servicios",
+      total: "Total estimado",
+      confirm: "Obtener Ticket",
+      processing: "Procesando...",
+      disclaimer: "Pagarás directamente en el santuario. Este ticket confirma tu reserva.",
+      ticketTitle: "¡Tu Reserva está Confirmada!",
+      ticketCode: "Código de ticket",
+      ticketMsg: "Presenta este ticket en la entrada del santuario. Puedes pagar en efectivo o tarjeta al llegar.",
+      print: "Imprimir Ticket",
+      newBooking: "Nueva Reserva",
+      errorOverbooking: "No hay suficientes cupos. Solo quedan",
+      errorGeneral: "Ocurrió un error. Intenta de nuevo.",
       months: ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
-      daysShort: ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'],
-      selected: "Seleccionado",
-      available: "Disponible",
-      occupied: "Ocupado",
-      servicesList: {
-        circuit: { name: "Circuito Termal", desc: "Piscinas termales, sauna y baño turco." },
-        massage: { name: "Masaje Relajante", desc: "Aceites esenciales y técnicas suecas." },
-        mud: { name: "Terapia de Lodo", desc: "Barro mineral volcánico rico en nutrientes." }
-      }
+      daysShort: ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
     }
   },
   en: {
@@ -149,30 +168,49 @@ const translations = {
       back: "Back to Home",
       title: "Book your",
       titleHighlight: "Experience",
-      desc: "Select your ideal date and desired treatment to begin your journey of relaxation and deep wellness.",
-      step1: "Select Date",
-      step2: "Select Time",
-      step3: "Services",
-      personalData: "Personal Details",
-      name: "Full Name",
-      email: "Email",
-      phone: "Phone",
-      date: "Date",
-      time: "Time",
-      service: "Service",
-      total: "Total to pay",
-      confirm: "Confirm Booking",
-      disclaimer: "By confirming, you accept our 24-hour cancellation policy.",
+      step1: "Tickets",
+      step2: "Services",
+      step3: "Date",
+      step4: "Ticket",
+      stepOf: "of",
+      next: "Continue",
+      prev: "Back",
+      adult: "Adult",
+      child: "Child (6-12)",
+      senior: "Senior (60+)",
+      adultPrice: "75,000",
+      childPrice: "40,000",
+      seniorPrice: "60,000",
+      howMany: "How many guests will attend?",
+      perPerson: "/ person",
+      serviceFor: "Service for",
+      guest: "Guest",
+      selectService: "Select a service",
+      noService: "Entry only (no additional service)",
+      selectDate: "Select a date",
+      selectTime: "Available time",
+      spotsLeft: "spots available",
+      full: "Full",
+      yourData: "Your contact info",
+      name: "Full name",
+      email: "Email address",
+      phone: "Phone / WhatsApp",
+      summary: "Summary",
+      entries: "Tickets",
+      services: "Services",
+      total: "Estimated total",
+      confirm: "Get Ticket",
+      processing: "Processing...",
+      disclaimer: "You'll pay directly at the sanctuary. This ticket confirms your reservation.",
+      ticketTitle: "Your Booking is Confirmed!",
+      ticketCode: "Ticket code",
+      ticketMsg: "Show this ticket at the sanctuary entrance. You can pay with cash or card upon arrival.",
+      print: "Print Ticket",
+      newBooking: "New Booking",
+      errorOverbooking: "Not enough spots. Only remaining:",
+      errorGeneral: "An error occurred. Please try again.",
       months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
-      daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-      selected: "Selected",
-      available: "Available",
-      occupied: "Occupied",
-      servicesList: {
-        circuit: { name: "Thermal Circuit", desc: "Thermal pools, sauna, and turkish bath." },
-        massage: { name: "Relaxing Massage", desc: "Essential oils and swedish techniques." },
-        mud: { name: "Mud Therapy", desc: "Nutrient-rich volcanic mineral mud." }
-      }
+      daysShort: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     }
   }
 };
@@ -194,15 +232,15 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (savedLang) {
       setLanguage(savedLang);
     } else {
-        // Simple browser detection
-        const browserLang = navigator.language.split('-')[0];
-        if (browserLang === 'en') setLanguage('en');
+      // Simple browser detection
+      const browserLang = navigator.language.split('-')[0];
+      if (browserLang === 'en') setLanguage('en');
     }
   }, []);
 
   const changeLanguage = (lang: Language) => {
-      setLanguage(lang);
-      localStorage.setItem('lang', lang);
+    setLanguage(lang);
+    localStorage.setItem('lang', lang);
   }
 
   const t = translations[language];

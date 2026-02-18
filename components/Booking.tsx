@@ -1,256 +1,556 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { supabase } from '../lib/supabase';
 
-const timeSlots = [
-    "09:00", "10:00", "11:00", "12:30", "14:00", "16:00", "17:30"
-];
+/* ── Types ─────────────────────────────── */
+interface ServiceItem { id: string; title: string; price: number; category: string }
+interface SlotInfo { time_slot: string; booked_count: number; max_capacity: number }
+interface TicketResult { success: boolean; ticket_code?: string; booking_id?: string; error?: string; available?: number }
+
+const PRICES = { adult: 75000, child: 40000, senior: 60000 };
+const formatCOP = (n: number) => new Intl.NumberFormat('es-CO').format(n) + ' COP';
 
 const Booking: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { t } = useLanguage();
-    const [selectedDate, setSelectedDate] = useState<number | null>(5);
-    const [selectedTime, setSelectedTime] = useState<string | null>("10:00");
-    const [selectedService, setSelectedService] = useState<string>('massage');
 
-    // Reconstruct services array to use current language
-    const services = [
-        {
-            id: 'circuit',
-            name: t.booking.servicesList.circuit.name,
-            price: 180000,
-            duration: '90 min',
-            description: t.booking.servicesList.circuit.desc,
-            image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCBh-fRSMAHnStCzQH_dtVcY7CZpSR8e6hsg7VSxhjx1M9hJmtTaYTKEQDh8bJz7kF0-oI-nuIppsF9g6IoVKQfrDeSRvp9yO-yklVyMNIiqj3ZFoOrEbTPVfEyEN2U798_OIt5e__KwxJGgHchcGOH4w5PVNKXWVF8A8LvvN-dDIMvXAujxwZ1z2zNMKQS3BRjBAJZReZfaHBNqh_Sm7NQryT6F1fBDWHQhNgU3Jpoz3oJdw5ytRnjkIG2wlSfGPJM0dBBDvd8FudQ'
-        },
-        {
-            id: 'massage',
-            name: t.booking.servicesList.massage.name,
-            price: 250000,
-            duration: '60 min',
-            description: t.booking.servicesList.massage.desc,
-            image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCVK_RCEsN7lRxZLTE_pbPY3MPrlkqNICZMt35nuG0v4EIAWN2MjqQHW2xCa8XwYN3jMBtgzW32gJVhmV9siLfqQVd0eMg9KzzTvVSKSoK_LQvk3qCZhI5GX3KTSbIPUOt6rnqb0pZyx1B7GEOKw0nl_-ZuuLd54mqiltPa0TulEtCyPwr-0MyRp_zFaxrB0m-2c3zD3zh6hqxpZFWb_ED0K73kEHSY78n6t3tQfiESjvcxo9FKw65R6llV9N2PL1h5MyOnuknp_5oB'
-        },
-        {
-            id: 'mud',
-            name: t.booking.servicesList.mud.name,
-            price: 150000,
-            duration: '45 min',
-            description: t.booking.servicesList.mud.desc,
-            image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBTaUutmcpKp-Cx4N2eYOYx_5OTGqguPhotdp7Pct4cgmH8MBKQwtIJF20RYTpo7xqRU2NSwfqwtETHvUi130_j-ejLrxK40LLkmvxgLj82aIeCDLnSwhrAE1hhKIaIzZZ6PUJavI7-nnqpkv_DpRbZaFwm-QBCQOq9Rk4cSc26LvO1sPd_T9Jptcb-E8n9MUgSyLEqxQbGZLpUvPV8mUjNanm31AsqHYAli4GJfDjtxzqZ4YxsQbBm7knJ0tmojFWQ52EQ7oNQXkwV'
+    /* ── State ──────────────────────── */
+    const [step, setStep] = useState(1);
+    // Step 1
+    const [adults, setAdults] = useState(1);
+    const [children, setChildren] = useState(0);
+    const [seniors, setSeniors] = useState(0);
+    // Step 2
+    const [dbServices, setDbServices] = useState<ServiceItem[]>([]);
+    const [guestServices, setGuestServices] = useState<Record<number, string>>({});
+    // Step 3
+    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+    const [selectedSlot, setSelectedSlot] = useState('');
+    const [slots, setSlots] = useState<SlotInfo[]>([]);
+    const [calMonth, setCalMonth] = useState(new Date().getMonth());
+    const [calYear, setCalYear] = useState(new Date().getFullYear());
+    // Contact
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [phone, setPhone] = useState('');
+    // Ticket
+    const [ticketCode, setTicketCode] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    const ticketRef = useRef<HTMLDivElement>(null);
+
+    const totalGuests = adults + children + seniors;
+
+    /* ── Load services from DB ──── */
+    useEffect(() => {
+        supabase.from('services').select('id, title, price, category').order('created_at')
+            .then(({ data }) => {
+                if (data) setDbServices(data as ServiceItem[]);
+            });
+    }, []);
+
+    /* ── Load slots when date changes ──── */
+    useEffect(() => {
+        if (!selectedDate) return;
+        const dateStr = selectedDate.toISOString().split('T')[0];
+        supabase.from('daily_capacity')
+            .select('time_slot, booked_count, max_capacity')
+            .eq('booking_date', dateStr)
+            .order('time_slot')
+            .then(({ data }) => {
+                if (data && data.length > 0) {
+                    setSlots(data as SlotInfo[]);
+                } else {
+                    // Default slots if none seeded
+                    setSlots(['09:00', '10:00', '11:00', '12:30', '14:00', '16:00'].map(ts => ({
+                        time_slot: ts, booked_count: 0, max_capacity: 30
+                    })));
+                }
+            });
+        setSelectedSlot('');
+    }, [selectedDate]);
+
+    /* ── Derived ──────────────────── */
+    const treatments = dbServices.filter(s => s.category === 'treatment');
+
+    const calcTotal = () => {
+        let total = adults * PRICES.adult + children * PRICES.child + seniors * PRICES.senior;
+        Object.values(guestServices).forEach(sId => {
+            if (sId) {
+                const svc = dbServices.find(s => s.id === sId);
+                if (svc) total += svc.price;
+            }
+        });
+        return total;
+    };
+
+    const canGoNext = () => {
+        if (step === 1) return totalGuests > 0;
+        if (step === 2) return true; // services are optional
+        if (step === 3) return selectedDate && selectedSlot && name.trim() && email.trim();
+        return false;
+    };
+
+    /* ── Create booking ──────────── */
+    const handleConfirm = async () => {
+        if (!selectedDate || !selectedSlot) return;
+        setLoading(true);
+        setError('');
+
+        const dateStr = selectedDate.toISOString().split('T')[0];
+        const servicesData = Object.entries(guestServices).map(([idx, sId]) => {
+            const svc = dbServices.find(s => s.id === sId);
+            return { guestIndex: Number(idx), serviceId: sId, serviceName: svc?.title || '', price: svc?.price || 0 };
+        }).filter(s => s.serviceId);
+
+        try {
+            const { data, error: rpcError } = await supabase.rpc('create_booking', {
+                p_user_name: name,
+                p_user_email: email,
+                p_user_phone: phone,
+                p_booking_date: dateStr,
+                p_time_slot: selectedSlot,
+                p_num_adults: adults,
+                p_num_children: children,
+                p_num_seniors: seniors,
+                p_guest_services: servicesData,
+                p_total_price: calcTotal(),
+                p_notes: ''
+            });
+
+            if (rpcError) throw rpcError;
+            const result = data as TicketResult;
+            if (result.success && result.ticket_code) {
+                setTicketCode(result.ticket_code);
+                setStep(4);
+            } else if (result.error === 'NO_AVAILABILITY') {
+                setError(`${t.booking.errorOverbooking} ${result.available}.`);
+            } else {
+                setError(t.booking.errorGeneral);
+            }
+        } catch {
+            setError(t.booking.errorGeneral);
         }
-    ];
+        setLoading(false);
+    };
 
-    const currentService = services.find(s => s.id === selectedService) || services[0];
-    const currentMonthName = t.booking.months[9]; // Octubre
+    /* ── Print ticket ──────────── */
+    const handlePrint = () => {
+        if (!ticketRef.current) return;
+        const w = window.open('', '_blank');
+        if (!w) return;
+        w.document.write(`<!DOCTYPE html><html><head><title>Ticket ${ticketCode}</title>
+            <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Lato:wght@400;700&display=swap" rel="stylesheet">
+            <style>*{margin:0;box-sizing:border-box;font-family:'Lato',sans-serif}body{padding:30px;max-width:450px;margin:0 auto}
+            .logo{font-family:'Playfair Display',serif;font-size:24px;text-align:center;margin-bottom:20px;color:#3F606A}
+            .code{font-size:32px;font-weight:bold;text-align:center;letter-spacing:4px;color:#8C6145;margin:20px 0;padding:16px;border:2px dashed #BA9269;border-radius:8px}
+            .info{margin:12px 0;padding:8px 0;border-bottom:1px solid #eee}.info span{font-weight:bold}
+            .msg{text-align:center;color:#666;font-size:13px;margin-top:24px;padding-top:16px;border-top:2px solid #3F606A}
+            .total{font-size:20px;font-weight:bold;color:#3F606A;text-align:right;margin-top:16px}
+            @media print{body{padding:15px}}</style></head><body>`);
+        w.document.write(ticketRef.current.innerHTML);
+        w.document.write('</body></html>');
+        w.document.close();
+        w.print();
+    };
 
-    const generateCalendarDays = () => {
-        const days = [];
-        // Empty slots for start of month
-        for(let i = 0; i < 3; i++) days.push(<div key={`empty-${i}`} className="h-10 sm:h-12"></div>);
-        // Days
-        for(let i = 1; i <= 15; i++) {
-            const isSelected = i === selectedDate;
-            const isDisabled = i === 1; // Example disabled day
-            days.push(
+    /* ── Counter component ──────── */
+    const Counter = ({ label, sublabel, value, onChange, min = 0 }: { label: string; sublabel: string; value: number; onChange: (v: number) => void; min?: number }) => (
+        <div className="flex items-center justify-between py-3 border-b border-stone-200 dark:border-stone-700 last:border-0">
+            <div>
+                <p className="font-display text-base sm:text-lg text-stone-800 dark:text-stone-100">{label}</p>
+                <p className="text-xs text-stone-500">{sublabel}</p>
+            </div>
+            <div className="flex items-center gap-3">
                 <button
-                    key={i}
-                    onClick={() => !isDisabled && setSelectedDate(i)}
-                    disabled={isDisabled}
-                    className={`h-10 sm:h-12 w-full flex items-center justify-center rounded-lg text-sm font-body transition-all duration-300 relative
-                        ${isDisabled ? 'text-stone-300 dark:text-stone-600 cursor-not-allowed' : 'hover:bg-stone-100 dark:hover:bg-stone-700'}
-                        ${isSelected ? 'font-bold text-white' : 'text-stone-800 dark:text-stone-200'}
-                    `}
+                    onClick={() => onChange(Math.max(min, value - 1))}
+                    className="w-9 h-9 rounded-full border border-stone-300 dark:border-stone-600 flex items-center justify-center text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700 transition active:scale-95 disabled:opacity-30"
+                    disabled={value <= min}
+                    aria-label={`Menos ${label}`}
                 >
-                    {isSelected && (
-                        <div className="absolute inset-0 bg-primary rounded-lg shadow-md -z-10 transform scale-105"></div>
-                    )}
-                    {i}
+                    <span className="material-icons-outlined text-sm">remove</span>
+                </button>
+                <span className="w-8 text-center font-bold text-lg text-stone-800 dark:text-stone-100">{value}</span>
+                <button
+                    onClick={() => onChange(value + 1)}
+                    className="w-9 h-9 rounded-full border border-primary text-primary flex items-center justify-center hover:bg-primary hover:text-white transition active:scale-95"
+                    aria-label={`Más ${label}`}
+                >
+                    <span className="material-icons-outlined text-sm">add</span>
+                </button>
+            </div>
+        </div>
+    );
+
+    /* ── Step indicator ──────────── */
+    const steps = [t.booking.step1, t.booking.step2, t.booking.step3, t.booking.step4];
+
+    /* ── Calendar ──────────── */
+    const renderCalendar = () => {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const firstDay = new Date(calYear, calMonth, 1).getDay();
+        const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+        const cells = [];
+
+        for (let i = 0; i < firstDay; i++) cells.push(<div key={`e${i}`} />);
+        for (let d = 1; d <= daysInMonth; d++) {
+            const date = new Date(calYear, calMonth, d);
+            const isPast = date < today;
+            const isSelected = selectedDate?.toDateString() === date.toDateString();
+            cells.push(
+                <button
+                    key={d}
+                    disabled={isPast}
+                    onClick={() => setSelectedDate(date)}
+                    className={`aspect-square rounded-lg text-sm font-medium transition-all
+                        ${isPast ? 'text-stone-300 dark:text-stone-600 cursor-not-allowed' : 'hover:bg-primary/10 cursor-pointer'}
+                        ${isSelected ? 'bg-primary text-white hover:bg-primary shadow-md' : 'text-stone-700 dark:text-stone-300'}`}
+                >
+                    {d}
                 </button>
             );
         }
-        return days;
+        return cells;
     };
 
+    const goPrevMonth = () => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); } else setCalMonth(m => m - 1); };
+    const goNextMonth = () => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1); } else setCalMonth(m => m + 1); };
+
+    /* ── Guest labels ──────────── */
+    const guestLabels: { type: string; label: string }[] = [];
+    for (let i = 0; i < adults; i++) guestLabels.push({ type: 'adult', label: `${t.booking.adult} ${adults > 1 ? i + 1 : ''}` });
+    for (let i = 0; i < children; i++) guestLabels.push({ type: 'child', label: `${t.booking.child} ${children > 1 ? i + 1 : ''}` });
+    for (let i = 0; i < seniors; i++) guestLabels.push({ type: 'senior', label: `${t.booking.senior} ${seniors > 1 ? i + 1 : ''}` });
+
     return (
-        <div className="pt-28 pb-12 max-w-[1120px] mx-auto px-4 sm:px-6">
-            <div className="mb-10 animate-fadeIn">
-                <button 
-                    onClick={onBack}
-                    className="flex items-center gap-2 text-primary hover:text-primary-dark transition-colors mb-6 text-sm font-bold tracking-widest uppercase"
-                >
-                    <span className="material-icons-outlined text-sm">arrow_back</span>
-                    {t.booking.back}
-                </button>
-                <h2 className="text-3xl md:text-5xl font-display text-stone-800 dark:text-stone-100 mb-4 leading-tight">
-                    {t.booking.title} <span className="italic text-primary">{t.booking.titleHighlight}</span>
-                </h2>
-                <p className="text-text-muted-light dark:text-text-muted-dark text-lg max-w-2xl font-body font-light">
-                    {t.booking.desc}
-                </p>
+        <div className="min-h-screen bg-background-light dark:bg-background-dark">
+            {/* Header */}
+            <div className="bg-primary text-white">
+                <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+                    <button onClick={onBack} className="flex items-center gap-1 text-white/80 hover:text-white text-sm mb-3 transition">
+                        <span className="material-icons-outlined text-lg">arrow_back</span>
+                        {t.booking.back}
+                    </button>
+                    <h1 className="font-display text-2xl sm:text-3xl">
+                        {t.booking.title} <span className="text-sand-light">{t.booking.titleHighlight}</span>
+                    </h1>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
-                <div className="lg:col-span-7 space-y-10">
-                    {/* Calendar Section */}
-                    <section className="bg-white dark:bg-surface-dark rounded-2xl p-6 shadow-xl border border-stone-100 dark:border-stone-800">
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
-                            <h3 className="text-2xl font-display font-medium text-stone-800 dark:text-stone-100 flex items-center gap-3">
-                                <span className="bg-primary/20 text-primary rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold font-body">1</span>
-                                {t.booking.step1}
-                            </h3>
-                            <div className="flex gap-2 text-stone-600 dark:text-stone-300 self-end sm:self-auto">
-                                <button className="p-2 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-full transition">
-                                    <span className="material-icons-outlined">chevron_left</span>
-                                </button>
-                                <span className="text-lg font-bold self-center px-2 font-display">{currentMonthName} 2023</span>
-                                <button className="p-2 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-full transition">
-                                    <span className="material-icons-outlined">chevron_right</span>
-                                </button>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-4">
-                            {t.booking.daysShort.map(day => (
-                                <div key={day} className="text-center text-xs font-bold text-stone-400 uppercase py-2 tracking-wider">{day}</div>
-                            ))}
-                            {generateCalendarDays()}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-4 text-xs font-body text-stone-500 mt-4 pl-1">
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-primary"></div> {t.booking.selected}</div>
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-stone-200 dark:bg-stone-700"></div> {t.booking.available}</div>
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full border border-dashed border-stone-300"></div> {t.booking.occupied}</div>
-                        </div>
-                    </section>
-
-                    {/* Time Selection */}
-                    <section>
-                        <h3 className="text-2xl font-display font-medium text-stone-800 dark:text-stone-100 flex items-center gap-3 mb-6">
-                            <span className="bg-primary/20 text-primary rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold font-body">2</span>
-                            {t.booking.step2}
-                        </h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            {timeSlots.map(time => (
-                                <button
-                                    key={time}
-                                    onClick={() => setSelectedTime(time)}
-                                    className={`py-3 px-4 rounded-xl font-body text-sm transition-all duration-200 border
-                                        ${selectedTime === time 
-                                            ? 'bg-primary text-white border-primary shadow-lg transform scale-105 font-bold' 
-                                            : 'border-stone-200 dark:border-stone-700 hover:border-primary text-stone-600 dark:text-stone-300 hover:text-primary'
-                                        }`}
-                                >
-                                    {time}
-                                </button>
-                            ))}
-                            <button className="py-3 px-4 rounded-xl border border-stone-100 dark:border-stone-800 bg-stone-50 dark:bg-stone-800/50 text-stone-300 dark:text-stone-600 font-body text-sm cursor-not-allowed">
-                                19:00
-                            </button>
-                        </div>
-                    </section>
-                </div>
-
-                {/* Sidebar */}
-                <div className="lg:col-span-5 space-y-8">
-                    {/* Service Selection */}
-                    <section>
-                        <h3 className="text-2xl font-display font-medium text-stone-800 dark:text-stone-100 flex items-center gap-3 mb-6">
-                            <span className="bg-primary/20 text-primary rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold font-body">3</span>
-                            {t.booking.step3}
-                        </h3>
-                        <div className="space-y-4">
-                            {services.map(service => (
-                                <label 
-                                    key={service.id}
-                                    className={`relative flex items-center gap-4 p-4 rounded-2xl border cursor-pointer bg-white dark:bg-surface-dark transition-all duration-300 group
-                                        ${selectedService === service.id 
-                                            ? 'border-primary shadow-lg ring-1 ring-primary/20' 
-                                            : 'border-stone-200 dark:border-stone-700 hover:shadow-md'
-                                        }`}
-                                >
-                                    <input 
-                                        type="radio" 
-                                        name="service" 
-                                        className="sr-only" 
-                                        checked={selectedService === service.id}
-                                        onChange={() => setSelectedService(service.id)}
-                                    />
-                                    <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-stone-100">
-                                        <img src={service.image} alt={service.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+            {/* Stepper */}
+            {step < 4 && (
+                <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4">
+                    <div className="flex items-center gap-1 sm:gap-2">
+                        {steps.slice(0, 3).map((s, i) => (
+                            <React.Fragment key={i}>
+                                <div className={`flex items-center gap-1.5 text-xs sm:text-sm font-medium transition-all
+                                    ${i + 1 === step ? 'text-primary' : i + 1 < step ? 'text-primary/60' : 'text-stone-400'}`}>
+                                    <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all
+                                        ${i + 1 === step ? 'bg-primary text-white shadow-md' : i + 1 < step ? 'bg-primary/20 text-primary' : 'bg-stone-200 dark:bg-stone-700 text-stone-400'}`}>
+                                        {i + 1 < step ? <span className="material-icons-outlined text-sm">check</span> : i + 1}
                                     </div>
-                                    <div className="flex-1">
-                                        <div className="flex justify-between items-start mb-1">
-                                            <h4 className="font-bold text-base sm:text-lg text-stone-800 dark:text-stone-100 font-display">{service.name}</h4>
-                                        </div>
-                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1">
-                                            <span className="text-xs sm:text-sm text-stone-500 leading-snug font-body line-clamp-2 pr-2">{service.description}</span>
-                                            <span className="font-body font-bold text-primary text-sm whitespace-nowrap">
-                                                ${(service.price / 1000).toFixed(0)}.000
-                                            </span>
-                                        </div>
-                                    </div>
-                                    {selectedService === service.id && (
-                                        <div className="absolute top-[-8px] right-[-8px] w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white shadow-sm">
-                                            <span className="material-icons-outlined text-sm font-bold">check</span>
-                                        </div>
-                                    )}
-                                </label>
-                            ))}
-                        </div>
-                    </section>
-
-                    {/* Summary & Form */}
-                    <div className="bg-white dark:bg-surface-dark rounded-2xl shadow-2xl p-6 sm:p-8 border border-stone-100 dark:border-stone-800 sticky top-24">
-                        <h3 className="text-xl font-medium font-display text-stone-800 dark:text-stone-100 mb-6">{t.booking.personalData}</h3>
-                        <form className="space-y-4 mb-8" onSubmit={(e) => e.preventDefault()}>
-                            <div>
-                                <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1 font-body">{t.booking.name}</label>
-                                <input className="w-full bg-stone-50 dark:bg-background-dark border-0 border-b-2 border-stone-200 dark:border-stone-700 focus:border-primary focus:ring-0 px-0 py-2 transition-colors font-body text-stone-800 dark:text-stone-100" placeholder="Ej: María García" type="text"/>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1 font-body">{t.booking.email}</label>
-                                    <input className="w-full bg-stone-50 dark:bg-background-dark border-0 border-b-2 border-stone-200 dark:border-stone-700 focus:border-primary focus:ring-0 px-0 py-2 transition-colors font-body text-stone-800 dark:text-stone-100" placeholder="email@example.com" type="email"/>
+                                    <span className="hidden sm:inline">{s}</span>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1 font-body">{t.booking.phone}</label>
-                                    <input className="w-full bg-stone-50 dark:bg-background-dark border-0 border-b-2 border-stone-200 dark:border-stone-700 focus:border-primary focus:ring-0 px-0 py-2 transition-colors font-body text-stone-800 dark:text-stone-100" placeholder="+57 300 000" type="tel"/>
-                                </div>
-                            </div>
-                        </form>
-                        
-                        <div className="border-t border-dashed border-stone-300 dark:border-stone-700 my-6"></div>
-                        
-                        <div className="space-y-3 font-body text-sm">
-                            <div className="flex justify-between items-center text-stone-600 dark:text-stone-400">
-                                <span className="flex items-center gap-2"><span className="material-icons-outlined text-lg">calendar_today</span> {t.booking.date}</span>
-                                <span className="text-stone-800 dark:text-stone-100 font-medium">{selectedDate} {currentMonthName}, 2023</span>
-                            </div>
-                            <div className="flex justify-between items-center text-stone-600 dark:text-stone-400">
-                                <span className="flex items-center gap-2"><span className="material-icons-outlined text-lg">schedule</span> {t.booking.time}</span>
-                                <span className="text-stone-800 dark:text-stone-100 font-medium">{selectedTime}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-stone-600 dark:text-stone-400">
-                                <span className="flex items-center gap-2"><span className="material-icons-outlined text-lg">spa</span> {t.booking.service}</span>
-                                <span className="text-stone-800 dark:text-stone-100 font-medium text-right max-w-[150px] truncate">{currentService.name}</span>
-                            </div>
-                        </div>
-
-                        <div className="border-t border-stone-200 dark:border-stone-700 mt-6 pt-4 mb-6">
-                            <div className="flex justify-between items-end">
-                                <span className="text-stone-500 font-body font-medium">{t.booking.total}</span>
-                                <span className="text-3xl font-bold text-primary font-display leading-none">
-                                    ${(currentService.price / 1000).toFixed(0)}.000 <span className="text-sm font-normal text-stone-400">COP</span>
-                                </span>
-                            </div>
-                        </div>
-
-                        <button className="w-full bg-primary hover:bg-opacity-90 text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.01] transition-all duration-300 flex items-center justify-center gap-2 group tracking-widest uppercase text-xs">
-                            {t.booking.confirm}
-                            <span className="material-icons-outlined group-hover:translate-x-1 transition-transform">arrow_forward</span>
-                        </button>
-                        <p className="text-center text-xs text-stone-400 mt-4 font-body">
-                            {t.booking.disclaimer}
-                        </p>
+                                {i < 2 && <div className={`flex-1 h-px ${i + 1 < step ? 'bg-primary/40' : 'bg-stone-200 dark:bg-stone-700'}`} />}
+                            </React.Fragment>
+                        ))}
                     </div>
                 </div>
+            )}
+
+            {/* Content */}
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 pb-8">
+
+                {/* ═══ STEP 1: Tickets ═══ */}
+                {step === 1 && (
+                    <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-lg p-5 sm:p-8 border border-stone-200 dark:border-stone-800">
+                        <div className="flex items-center gap-2 mb-6">
+                            <span className="material-icons-outlined text-primary text-2xl" aria-hidden="true">confirmation_number</span>
+                            <h2 className="font-display text-xl sm:text-2xl text-stone-800 dark:text-stone-100">{t.booking.howMany}</h2>
+                        </div>
+                        <Counter label={t.booking.adult} sublabel={`${t.booking.adultPrice} COP ${t.booking.perPerson}`} value={adults} onChange={setAdults} />
+                        <Counter label={t.booking.child} sublabel={`${t.booking.childPrice} COP ${t.booking.perPerson}`} value={children} onChange={setChildren} />
+                        <Counter label={t.booking.senior} sublabel={`${t.booking.seniorPrice} COP ${t.booking.perPerson}`} value={seniors} onChange={setSeniors} />
+
+                        <div className="mt-6 p-4 bg-primary/5 rounded-lg border border-primary/10">
+                            <div className="flex justify-between text-sm text-stone-600 dark:text-stone-400">
+                                <span>{t.booking.entries} ({totalGuests})</span>
+                                <span className="font-bold text-stone-800 dark:text-stone-100">{formatCOP(adults * PRICES.adult + children * PRICES.child + seniors * PRICES.senior)}</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ═══ STEP 2: Services per person ═══ */}
+                {step === 2 && (
+                    <div className="space-y-3">
+                        <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-lg p-5 sm:p-8 border border-stone-200 dark:border-stone-800">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="material-icons-outlined text-accent text-2xl" aria-hidden="true">spa</span>
+                                <h2 className="font-display text-xl sm:text-2xl text-stone-800 dark:text-stone-100">{t.booking.selectService}</h2>
+                            </div>
+                            <p className="text-sm text-stone-500 mb-6">{t.booking.serviceFor} {totalGuests} {t.booking.guest.toLowerCase()}{totalGuests > 1 ? 's' : ''}</p>
+
+                            <div className="space-y-4">
+                                {guestLabels.map((g, idx) => (
+                                    <div key={idx} className="p-4 rounded-lg bg-stone-50 dark:bg-stone-800/50 border border-stone-200 dark:border-stone-700">
+                                        <p className="text-sm font-bold text-stone-700 dark:text-stone-300 mb-3 flex items-center gap-2">
+                                            <span className="material-icons-outlined text-base text-primary" aria-hidden="true">person</span>
+                                            {g.label}
+                                        </p>
+                                        <div className="space-y-2">
+                                            {/* No service option */}
+                                            <label className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border transition-all
+                                                ${!guestServices[idx] ? 'border-primary bg-primary/5' : 'border-stone-200 dark:border-stone-600 hover:border-primary/40'}`}>
+                                                <input
+                                                    type="radio"
+                                                    name={`svc-${idx}`}
+                                                    checked={!guestServices[idx]}
+                                                    onChange={() => { const gs = { ...guestServices }; delete gs[idx]; setGuestServices(gs); }}
+                                                    className="accent-primary"
+                                                />
+                                                <span className="text-sm text-stone-600 dark:text-stone-400">{t.booking.noService}</span>
+                                                <span className="ml-auto text-xs text-stone-400">—</span>
+                                            </label>
+                                            {/* Treatment options */}
+                                            {treatments.map(svc => (
+                                                <label key={svc.id} className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border transition-all
+                                                    ${guestServices[idx] === svc.id ? 'border-accent bg-accent/5' : 'border-stone-200 dark:border-stone-600 hover:border-accent/40'}`}>
+                                                    <input
+                                                        type="radio"
+                                                        name={`svc-${idx}`}
+                                                        checked={guestServices[idx] === svc.id}
+                                                        onChange={() => setGuestServices(prev => ({ ...prev, [idx]: svc.id }))}
+                                                        className="accent-accent"
+                                                    />
+                                                    <span className="text-sm text-stone-700 dark:text-stone-200 flex-1">{svc.title}</span>
+                                                    <span className="text-xs font-bold text-accent whitespace-nowrap">+{formatCOP(svc.price)}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ═══ STEP 3: Date + Time + Contact ═══ */}
+                {step === 3 && (
+                    <div className="space-y-4">
+                        {/* Calendar */}
+                        <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-lg p-5 sm:p-8 border border-stone-200 dark:border-stone-800">
+                            <div className="flex items-center gap-2 mb-5">
+                                <span className="material-icons-outlined text-primary text-2xl" aria-hidden="true">calendar_month</span>
+                                <h2 className="font-display text-xl sm:text-2xl text-stone-800 dark:text-stone-100">{t.booking.selectDate}</h2>
+                            </div>
+
+                            {/* Month nav */}
+                            <div className="flex items-center justify-between mb-4">
+                                <button onClick={goPrevMonth} className="p-2 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full transition">
+                                    <span className="material-icons-outlined text-stone-600 dark:text-stone-300">chevron_left</span>
+                                </button>
+                                <span className="font-display text-base sm:text-lg text-stone-800 dark:text-stone-100">
+                                    {t.booking.months[calMonth]} {calYear}
+                                </span>
+                                <button onClick={goNextMonth} className="p-2 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full transition">
+                                    <span className="material-icons-outlined text-stone-600 dark:text-stone-300">chevron_right</span>
+                                </button>
+                            </div>
+
+                            {/* Day headers */}
+                            <div className="grid grid-cols-7 gap-1 mb-2">
+                                {t.booking.daysShort.map((d: string) => (
+                                    <div key={d} className="text-center text-[10px] sm:text-xs font-bold text-stone-400 uppercase">{d}</div>
+                                ))}
+                            </div>
+                            {/* Calendar grid */}
+                            <div className="grid grid-cols-7 gap-1">
+                                {renderCalendar()}
+                            </div>
+                        </div>
+
+                        {/* Time slots */}
+                        {selectedDate && (
+                            <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-lg p-5 sm:p-8 border border-stone-200 dark:border-stone-800">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <span className="material-icons-outlined text-accent text-2xl" aria-hidden="true">schedule</span>
+                                    <h2 className="font-display text-lg sm:text-xl text-stone-800 dark:text-stone-100">{t.booking.selectTime}</h2>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    {slots.map(slot => {
+                                        const avail = slot.max_capacity - slot.booked_count;
+                                        const isFull = avail < totalGuests;
+                                        const isSel = selectedSlot === slot.time_slot;
+                                        return (
+                                            <button
+                                                key={slot.time_slot}
+                                                disabled={isFull}
+                                                onClick={() => setSelectedSlot(slot.time_slot)}
+                                                className={`p-3 rounded-lg text-center border transition-all
+                                                    ${isFull ? 'bg-stone-100 dark:bg-stone-800 text-stone-400 border-stone-200 dark:border-stone-700 cursor-not-allowed' :
+                                                        isSel ? 'border-primary bg-primary text-white shadow-md' :
+                                                            'border-stone-200 dark:border-stone-700 hover:border-primary/40 text-stone-700 dark:text-stone-300'}`}
+                                            >
+                                                <span className="block font-bold text-sm">{slot.time_slot}</span>
+                                                <span className={`text-[10px] ${isFull ? 'text-stone-400' : isSel ? 'text-white/70' : 'text-stone-500'}`}>
+                                                    {isFull ? t.booking.full : `${avail} ${t.booking.spotsLeft}`}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Contact info */}
+                        {selectedSlot && (
+                            <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-lg p-5 sm:p-8 border border-stone-200 dark:border-stone-800">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <span className="material-icons-outlined text-sand text-2xl" aria-hidden="true">badge</span>
+                                    <h2 className="font-display text-lg sm:text-xl text-stone-800 dark:text-stone-100">{t.booking.yourData}</h2>
+                                </div>
+                                <div className="space-y-3">
+                                    <input
+                                        type="text" placeholder={t.booking.name} value={name} onChange={e => setName(e.target.value)}
+                                        className="w-full px-4 py-3 rounded-lg bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-base text-stone-800 dark:text-stone-100 focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition"
+                                    />
+                                    <input
+                                        type="email" placeholder={t.booking.email} value={email} onChange={e => setEmail(e.target.value)}
+                                        className="w-full px-4 py-3 rounded-lg bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-base text-stone-800 dark:text-stone-100 focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition"
+                                    />
+                                    <input
+                                        type="tel" placeholder={t.booking.phone} value={phone} onChange={e => setPhone(e.target.value)}
+                                        className="w-full px-4 py-3 rounded-lg bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-base text-stone-800 dark:text-stone-100 focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Summary */}
+                        {selectedSlot && name && email && (
+                            <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-lg p-5 sm:p-8 border border-stone-200 dark:border-stone-800">
+                                <h3 className="font-display text-lg text-stone-800 dark:text-stone-100 mb-4 flex items-center gap-2">
+                                    <span className="material-icons-outlined text-primary" aria-hidden="true">receipt_long</span>
+                                    {t.booking.summary}
+                                </h3>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between">
+                                        <span className="text-stone-500">{t.booking.adult} × {adults}</span>
+                                        <span className="text-stone-700 dark:text-stone-300">{formatCOP(adults * PRICES.adult)}</span>
+                                    </div>
+                                    {children > 0 && <div className="flex justify-between">
+                                        <span className="text-stone-500">{t.booking.child} × {children}</span>
+                                        <span className="text-stone-700 dark:text-stone-300">{formatCOP(children * PRICES.child)}</span>
+                                    </div>}
+                                    {seniors > 0 && <div className="flex justify-between">
+                                        <span className="text-stone-500">{t.booking.senior} × {seniors}</span>
+                                        <span className="text-stone-700 dark:text-stone-300">{formatCOP(seniors * PRICES.senior)}</span>
+                                    </div>}
+                                    {Object.entries(guestServices).map(([idx, sId]) => {
+                                        const svc = dbServices.find(s => s.id === sId);
+                                        if (!svc) return null;
+                                        return (
+                                            <div key={idx} className="flex justify-between">
+                                                <span className="text-stone-500">{svc.title} ({guestLabels[Number(idx)]?.label})</span>
+                                                <span className="text-accent font-medium">{formatCOP(svc.price)}</span>
+                                            </div>
+                                        );
+                                    })}
+                                    <div className="border-t border-stone-200 dark:border-stone-700 pt-3 mt-3 flex justify-between">
+                                        <span className="font-bold text-stone-800 dark:text-stone-100">{t.booking.total}</span>
+                                        <span className="font-bold text-lg text-primary">{formatCOP(calcTotal())}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* ═══ STEP 4: Ticket ═══ */}
+                {step === 4 && (
+                    <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-lg p-5 sm:p-8 border border-stone-200 dark:border-stone-800 text-center">
+                        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                            <span className="material-icons-outlined text-primary text-3xl">check_circle</span>
+                        </div>
+                        <h2 className="font-display text-2xl sm:text-3xl text-stone-800 dark:text-stone-100 mb-2">{t.booking.ticketTitle}</h2>
+
+                        <div ref={ticketRef}>
+                            <p className="logo">Cantar de la Tierra</p>
+                            <div className="code">{ticketCode}</div>
+                            <div className="info"><span>{t.booking.name}:</span> {name}</div>
+                            <div className="info"><span>{t.booking.email}:</span> {email}</div>
+                            {phone && <div className="info"><span>{t.booking.phone}:</span> {phone}</div>}
+                            <div className="info"><span>Fecha:</span> {selectedDate?.toLocaleDateString('es-CO')} — {selectedSlot}</div>
+                            <div className="info"><span>{t.booking.entries}:</span> {adults} {t.booking.adult}, {children} {t.booking.child}, {seniors} {t.booking.senior}</div>
+                            {Object.keys(guestServices).length > 0 && (
+                                <div className="info"><span>{t.booking.services}:</span> {Object.entries(guestServices).map(([idx, sId]) => {
+                                    const svc = dbServices.find(s => s.id === sId);
+                                    return svc ? `${guestLabels[Number(idx)]?.label}: ${svc.title}` : '';
+                                }).filter(Boolean).join(', ')}</div>
+                            )}
+                            <div className="total">{t.booking.total}: {formatCOP(calcTotal())}</div>
+                            <p className="msg">{t.booking.ticketMsg}</p>
+                        </div>
+
+                        {/* Visual ticket for screen */}
+                        <div className="mt-6 p-6 border-2 border-dashed border-sand rounded-xl bg-sand/5">
+                            <p className="text-xs text-stone-500 uppercase tracking-widest mb-2">{t.booking.ticketCode}</p>
+                            <p className="font-mono text-3xl sm:text-4xl font-bold text-accent tracking-[6px]">{ticketCode}</p>
+                        </div>
+
+                        <p className="text-sm text-stone-500 mt-6 mb-6">{t.booking.ticketMsg}</p>
+
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <button onClick={handlePrint} className="flex-1 flex items-center justify-center gap-2 bg-primary text-white py-3 rounded-lg hover:bg-primary-dark transition font-medium">
+                                <span className="material-icons-outlined text-lg">print</span>
+                                {t.booking.print}
+                            </button>
+                            <button onClick={() => { setStep(1); setTicketCode(''); setAdults(1); setChildren(0); setSeniors(0); setGuestServices({}); setSelectedDate(null); setSelectedSlot(''); setName(''); setEmail(''); setPhone(''); }}
+                                className="flex-1 flex items-center justify-center gap-2 border border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-300 py-3 rounded-lg hover:bg-stone-50 dark:hover:bg-stone-800 transition font-medium">
+                                <span className="material-icons-outlined text-lg">add</span>
+                                {t.booking.newBooking}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* ═══ Navigation ═══ */}
+                {step < 4 && (
+                    <div className="mt-6">
+                        {error && (
+                            <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2 text-red-700 dark:text-red-400 text-sm">
+                                <span className="material-icons-outlined text-lg">warning</span>
+                                {error}
+                            </div>
+                        )}
+
+                        <div className="flex gap-3">
+                            {step > 1 && (
+                                <button onClick={() => { setStep(s => s - 1); setError(''); }}
+                                    className="flex items-center justify-center gap-1 px-6 py-3 border border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-300 rounded-lg hover:bg-stone-50 dark:hover:bg-stone-800 transition font-medium">
+                                    <span className="material-icons-outlined text-lg">chevron_left</span>
+                                    {t.booking.prev}
+                                </button>
+                            )}
+                            <button
+                                onClick={step === 3 ? handleConfirm : () => setStep(s => s + 1)}
+                                disabled={!canGoNext() || loading}
+                                className="flex-1 flex items-center justify-center gap-2 bg-primary text-white py-3 rounded-lg hover:bg-primary-dark transition font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                {loading ? (
+                                    <>{t.booking.processing}</>
+                                ) : step === 3 ? (
+                                    <><span className="material-icons-outlined text-lg">confirmation_number</span>{t.booking.confirm}</>
+                                ) : (
+                                    <>{t.booking.next}<span className="material-icons-outlined text-lg">chevron_right</span></>
+                                )}
+                            </button>
+                        </div>
+
+                        <p className="text-center text-xs text-stone-400 mt-4">{t.booking.disclaimer}</p>
+                    </div>
+                )}
             </div>
         </div>
     );

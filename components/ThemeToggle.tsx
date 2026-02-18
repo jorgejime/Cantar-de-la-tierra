@@ -7,7 +7,7 @@ const ThemeToggle: React.FC = () => {
         // Check local storage or system preference on mount
         const userPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         const savedTheme = localStorage.getItem('theme');
-        
+
         if (savedTheme === 'dark' || (!savedTheme && userPrefersDark)) {
             setIsDark(true);
             document.documentElement.classList.add('dark');
@@ -30,12 +30,12 @@ const ThemeToggle: React.FC = () => {
     };
 
     return (
-        <button 
-            aria-label="Toggle Dark Mode" 
-            className="fixed bottom-6 right-6 z-50 bg-primary text-white p-3 rounded-full shadow-lg hover:bg-opacity-90 transition-all focus:outline-none transform hover:scale-110" 
+        <button
+            aria-label={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+            className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 bg-primary text-white p-3 rounded-full shadow-lg hover:bg-opacity-90 transition-all focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 transform hover:scale-110 active:scale-95"
             onClick={toggleTheme}
         >
-            <span className="material-icons-outlined text-xl">
+            <span className="material-icons-outlined text-xl" aria-hidden="true">
                 {isDark ? 'light_mode' : 'dark_mode'}
             </span>
         </button>

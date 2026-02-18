@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { supabase } from '../lib/supabase';
 
-const images = [
+const FALLBACK_IMAGES = [
     "https://lh3.googleusercontent.com/aida-public/AB6AXuBGcx3KNce1ueKPt0pHLaIfl8DT2t2oLEIqXeE2iQoslYNJNm6V08mGQytosuRDNvaJxw6va9IXKdof8pwA-Rf4Se1sXVyNggb270JZ_Gz56qCf9T1NGG04t-fjJst1ZCQRrwpF9Wi1IIqTrvUc3n6OlCy3-PZeNfLWm5j3gdayOLQ1X7HJB4xirkBg2bx0-shkUu6MudGCnZBbhizcwZEnrlyYm-xG1CZQyfxtgGG6X1P-fnJpYjVIGpZ2uUOn19QrwKH1Lp8ZFcM6",
     "https://lh3.googleusercontent.com/aida-public/AB6AXuCsbcHkeJf8ft_j4dMVPIf6udw4OtuRSnMBw5OXLHvvDQNvCzvIxYg7IBuA6SeEJKPEFG-y7CfYsH7pO7eIiet3CTRuAGPgRuvbCyyHEaVAFxSTQgGiFOYq1LRZvng7qlMkr8WigciLXlgtBmmeX4fgpfm4YJB10pVxZi69jrvCjQV-NKAq1QaFAaKX3tpc6oWf9VkMJRek91TfvwYUcf2BnKV1idH9H4_tcyePD_GxwCaw-UpZvZ-gpl0baIUgAb7219W3etk4WUM1",
     "https://lh3.googleusercontent.com/aida-public/AB6AXuBK6lhdYFqUJ_esEfTG39YNXXtWuIcyRWj4xjOqC0fljGgKrqyGvduzHqyqeAeS2QRfcvpLJtEnxygaR0Tbn_X4oHIFbAm3av7crecUXXoru_LUHNbjJImdknxZSZau4oyk60G8UUOGAfOiVMBUF9puhM-Cu2JCzxDNG7VUX3Z-LMseY2N-d3u6-T7GvO5LzsWtqEkcKiqZ6vYpkpKxe3mNF3-2gm-i9tVnJxmHN1DgOtUOViWtX0uhj1H050u7F7nBk6rvR6l5VbGb",
@@ -14,21 +15,33 @@ const images = [
 
 const Gallery: React.FC = () => {
     const { t } = useLanguage();
+    const [images, setImages] = useState<string[]>(FALLBACK_IMAGES);
+
+    useEffect(() => {
+        supabase.from('gallery_images').select('url').order('created_at')
+            .then(({ data }) => {
+                if (data && data.length > 0) {
+                    setImages(data.map(d => d.url));
+                }
+            });
+    }, []);
 
     return (
-        <section id="galeria" className="py-24 bg-background-light dark:bg-background-dark">
-            <div className="max-w-7xl mx-auto px-6">
-                <div className="text-center mb-16">
+        <section id="galeria" className="py-16 sm:py-24 bg-background-light dark:bg-background-dark" aria-labelledby="gallery-heading">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+                <div className="text-center mb-10 sm:mb-16">
                     <span className="text-primary text-xs font-bold tracking-[0.2em] uppercase">{t.gallery.tag}</span>
-                    <h2 className="font-display text-4xl text-stone-800 dark:text-stone-100 mt-2">{t.gallery.title}</h2>
+                    <h2 id="gallery-heading" className="font-display text-3xl sm:text-4xl text-stone-800 dark:text-stone-100 mt-2">{t.gallery.title}</h2>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-4">
                     {images.map((src, index) => (
                         <div key={index} className="aspect-square rounded overflow-hidden group relative cursor-pointer">
-                            <img 
-                                alt={`Gallery image ${index + 1}`} 
-                                className="w-full h-full object-cover group-hover:scale-110 transition duration-700" 
-                                src={src} 
+                            <img
+                                alt={`Galería Cantar de la Tierra — imagen ${index + 1}`}
+                                className="w-full h-full object-cover group-hover:scale-110 transition duration-700"
+                                src={src}
+                                loading="lazy"
+                                decoding="async"
                             />
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all"></div>
                         </div>
