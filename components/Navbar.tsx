@@ -1,168 +1,140 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { Menu, X, Globe, Sprout } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
-interface NavbarProps {
-    onNavigate: (section: string) => void;
-    onBook: () => void;
-    isBookingMode: boolean;
-}
+const Navbar: React.FC = () => {
+  const { language, toggleLanguage } = useLanguage();
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoLoading, setLogoLoading] = useState(true);
+  const location = useLocation();
 
-const Navbar: React.FC<NavbarProps> = ({ onNavigate, onBook, isBookingMode }) => {
-    const [scrolled, setScrolled] = useState(false);
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const { t, language, setLanguage } = useLanguage();
-    const [logoUrl, setLogoUrl] = useState<string | null>(null);
-    const [siteTitle, setSiteTitle] = useState('Cantar de la Tierra');
+  useEffect(() => {
+    const handleScroll = () => setIsScrolled(window.scrollY > 50);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
-    useEffect(() => {
-        const fetchConfig = async () => {
-            const { data } = await supabase.from('site_config').select('*').in('key', ['logo_url', 'site_title']);
-            if (data) {
-                data.forEach((item: any) => {
-                    if (item.key === 'logo_url') setLogoUrl(item.value);
-                    if (item.key === 'site_title') setSiteTitle(item.value);
-                });
-            }
-        };
-        fetchConfig();
+  useEffect(() => { setMobileMenuOpen(false); }, [location]);
 
-        const handleScroll = () => {
-            setScrolled(window.scrollY > 50);
-        };
-        window.addEventListener('scroll', handleScroll, { passive: true });
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await supabase.from('site_config').select('value').eq('key', 'logo_url').single();
+        if (data?.value) setLogoUrl(data.value);
+      } catch { /* logo fallback */ }
+      setLogoLoading(false);
+    })();
+  }, []);
 
-    // Lock body scroll when mobile menu is open
-    useEffect(() => {
-        if (mobileMenuOpen) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = '';
-        }
-        return () => { document.body.style.overflow = ''; };
-    }, [mobileMenuOpen]);
+  const navLinks = [
+    { to: '/', label: 'Inicio' },
+    { to: '/servicios', label: 'Servicios' },
+    { to: '/galeria', label: 'Galería' },
+    { to: '/contacto', label: 'Contacto' },
+  ];
 
-    const handleLinkClick = (e: React.MouseEvent, section: string) => {
-        e.preventDefault();
-        onNavigate(section);
-        setMobileMenuOpen(false);
-    };
+  const isActive = (path: string) =>
+    path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
 
-    const toggleLanguage = () => {
-        setLanguage(language === 'es' ? 'en' : 'es');
-    };
+  const navClass = `fixed w-full z-50 transition-all duration-300 ${isScrolled
+    ? 'bg-background-dark/95 backdrop-blur-md shadow-lg shadow-black/20 py-2'
+    : 'bg-gradient-to-b from-black/50 to-transparent py-4'
+    }`;
 
-    return (
-        <nav
-            className={`fixed w-full z-40 top-0 transition-all duration-300 ${scrolled || isBookingMode
-                ? 'bg-background-light/95 dark:bg-background-dark/95 backdrop-blur-md shadow-sm border-b border-stone-200 dark:border-stone-800 py-2 sm:py-3'
-                : 'bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-sm border-b border-transparent py-3 sm:py-4'
-                }`}
-            role="navigation"
-            aria-label="Navegación principal"
-        >
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 flex justify-between items-center">
-                <div
-                    className="flex items-center gap-2 cursor-pointer flex-shrink-0"
-                    onClick={(e) => handleLinkClick(e, '')}
-                    role="link"
-                    aria-label="Ir al inicio"
-                >
-                    {logoUrl ? (
-                        <img src={logoUrl} alt={siteTitle} className="h-10 sm:h-[60px] w-auto object-contain" loading="lazy" />
-                    ) : (
-                        <span className="material-icons-outlined text-primary text-2xl sm:text-3xl" aria-hidden="true">spa</span>
-                    )}
-                    <span className="font-display text-lg sm:text-2xl font-medium tracking-wide text-stone-800 dark:text-stone-100 truncate max-w-[180px] sm:max-w-none">
-                        {siteTitle}
-                    </span>
-                </div>
+  return (
+    <nav className={navClass}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-24 md:h-32 transition-all duration-300">
 
-                {/* Desktop Menu */}
-                <div className="hidden md:flex items-center gap-4 lg:gap-8">
-                    <a href="#" onClick={(e) => handleLinkClick(e, '')} className="text-xs lg:text-sm uppercase tracking-widest hover:text-primary transition-colors">{t.nav.home}</a>
-                    <a href="#experiencia" onClick={(e) => handleLinkClick(e, 'experiencia')} className="text-xs lg:text-sm uppercase tracking-widest hover:text-primary transition-colors">{t.nav.services}</a>
-                    <a href="#galeria" onClick={(e) => handleLinkClick(e, 'galeria')} className="text-xs lg:text-sm uppercase tracking-widest hover:text-primary transition-colors">{t.nav.gallery}</a>
-                    <a href="#contacto" onClick={(e) => handleLinkClick(e, 'contacto')} className="text-xs lg:text-sm uppercase tracking-widest hover:text-primary transition-colors">{t.nav.contact}</a>
-
-                    <button
-                        onClick={toggleLanguage}
-                        className="text-xs uppercase tracking-widest hover:text-primary transition-colors border border-stone-300 dark:border-stone-700 rounded px-2 py-1"
-                        aria-label={`Cambiar idioma a ${language === 'es' ? 'inglés' : 'español'}`}
-                    >
-                        {language === 'es' ? 'EN' : 'ES'}
-                    </button>
-
-                    <button
-                        onClick={onBook}
-                        className="bg-primary text-white px-5 lg:px-6 py-2 rounded text-xs uppercase tracking-widest hover:bg-opacity-90 transition shadow-md whitespace-nowrap"
-                    >
-                        {t.nav.book}
-                    </button>
-                </div>
-
-                {/* Mobile Actions */}
-                <div className="md:hidden flex items-center gap-2">
-                    <button
-                        onClick={toggleLanguage}
-                        className="text-xs font-bold uppercase tracking-widest hover:text-primary transition-colors border border-stone-300 dark:border-stone-700 rounded px-2 py-1.5 text-stone-800 dark:text-stone-100"
-                        aria-label={`Cambiar idioma a ${language === 'es' ? 'inglés' : 'español'}`}
-                    >
-                        {language === 'es' ? 'EN' : 'ES'}
-                    </button>
-
-                    <button
-                        className="text-stone-800 dark:text-stone-100 z-50 relative p-1"
-                        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                        aria-label={mobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
-                        aria-expanded={mobileMenuOpen}
-                    >
-                        <span className="material-icons-outlined text-2xl">{mobileMenuOpen ? 'close' : 'menu'}</span>
-                    </button>
-                </div>
-            </div>
-
-            {/* Mobile Menu Overlay — Full screen */}
-            {mobileMenuOpen && (
-                <div
-                    className="md:hidden fixed inset-0 top-0 z-40 bg-background-light dark:bg-background-dark flex flex-col animate-fadeIn"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-label="Menú de navegación"
-                >
-                    {/* Close button area */}
-                    <div className="flex justify-end p-4 pt-5">
-                        <button
-                            onClick={() => setMobileMenuOpen(false)}
-                            className="p-2 text-stone-800 dark:text-stone-100"
-                            aria-label="Cerrar menú"
-                        >
-                            <span className="material-icons-outlined text-3xl">close</span>
-                        </button>
-                    </div>
-
-                    {/* Links */}
-                    <div className="flex-1 flex flex-col items-center justify-center gap-8 px-6">
-                        <a href="#" className="text-2xl font-display uppercase tracking-widest hover:text-primary transition-colors text-stone-800 dark:text-stone-100" onClick={(e) => handleLinkClick(e, '')}>{t.nav.home}</a>
-                        <a href="#experiencia" className="text-2xl font-display uppercase tracking-widest hover:text-primary transition-colors text-stone-800 dark:text-stone-100" onClick={(e) => handleLinkClick(e, 'experiencia')}>{t.nav.services}</a>
-                        <a href="#galeria" className="text-2xl font-display uppercase tracking-widest hover:text-primary transition-colors text-stone-800 dark:text-stone-100" onClick={(e) => handleLinkClick(e, 'galeria')}>{t.nav.gallery}</a>
-                        <a href="#contacto" className="text-2xl font-display uppercase tracking-widest hover:text-primary transition-colors text-stone-800 dark:text-stone-100" onClick={(e) => handleLinkClick(e, 'contacto')}>{t.nav.contact}</a>
-                        <button
-                            className="bg-primary text-white px-10 py-4 rounded text-sm uppercase tracking-widest hover:bg-opacity-90 transition shadow-lg mt-4 w-full max-w-xs"
-                            onClick={() => {
-                                setMobileMenuOpen(false);
-                                onBook();
-                            }}
-                        >
-                            {t.nav.book}
-                        </button>
-                    </div>
-                </div>
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-3 flex-shrink-0">
+            {logoLoading ? (
+              // Placeholder invisible mientras carga — misma altura para evitar salto de layout
+              <div className="h-20 md:h-28 w-[240px]" />
+            ) : logoUrl ? (
+              <img
+                src={logoUrl}
+                alt="Cantar de la Tierra - Santuario Termal"
+                className="h-20 md:h-28 w-auto object-contain drop-shadow-lg"
+                onError={() => setLogoUrl(null)}
+                width="240"
+                height="135"
+              />
+            ) : (
+              // Fallback si no hay logo en la base de datos
+              <div className="flex items-center gap-2">
+                <Sprout className="text-primary-light w-8 h-8 md:w-9 md:h-9" />
+                <span className="text-lg md:text-xl font-bold text-white tracking-wider font-display drop-shadow-md leading-tight">
+                  CANTAR DE<br className="hidden sm:block" /> LA TIERRA
+                </span>
+              </div>
             )}
-        </nav>
-    );
+          </Link>
+
+          {/* Desktop Menu */}
+          <div className="hidden md:flex items-center gap-8 lg:gap-10">
+            {navLinks.map(link => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className={`text-sm uppercase tracking-widest font-body font-medium transition-colors ${isActive(link.to)
+                  ? 'text-sand-light'
+                  : 'text-white/80 hover:text-sand-light'
+                  }`}
+              >
+                {link.label}
+              </Link>
+            ))}
+
+            <button
+              onClick={toggleLanguage}
+              className="flex items-center gap-1.5 text-white/70 hover:text-sand-light transition-colors text-sm font-medium"
+            >
+              <Globe className="w-4 h-4" />
+              {language.toUpperCase()}
+            </button>
+          </div>
+
+          {/* Mobile */}
+          <div className="md:hidden flex items-center gap-4">
+            <button onClick={toggleLanguage} className="text-white/70 hover:text-sand-light text-sm font-medium">
+              <Globe className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="text-white hover:text-sand-light focus:outline-none"
+            >
+              {mobileMenuOpen ? <X className="w-7 h-7" /> : <Menu className="w-7 h-7" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Dropdown */}
+      {mobileMenuOpen && (
+        <div className="md:hidden bg-background-dark/98 backdrop-blur-md absolute w-full border-t border-white/10">
+          <div className="px-4 py-4 space-y-1">
+            {navLinks.map(link => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className={`block px-4 py-3 rounded-xl text-base font-medium transition-colors ${isActive(link.to)
+                  ? 'text-sand-light bg-primary/10'
+                  : 'text-white/80 hover:text-sand-light hover:bg-white/5'
+                  }`}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+    </nav>
+  );
 };
 
 export default Navbar;

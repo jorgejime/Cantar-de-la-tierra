@@ -1,66 +1,116 @@
-import React, { useState, useEffect } from 'react';
-import { useLanguage } from '../contexts/LanguageContext';
-import { supabase } from '../lib/supabase';
+import React from 'react';
+import { Sprout, Facebook, Instagram, MessageCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useSiteConfig } from '../hooks/useSiteConfig';
 
-const FALLBACK_MAP = "https://lh3.googleusercontent.com/aida-public/AB6AXuDxnHMKJz6VXKjOMnaF_RWKb1n1vG34_E_PCEhml-GztJ3_Ovjklr52MQMpoSvuAABjZlkRtT2YtFVs-5yMB3i5p5XoGHFW_boSrphHeCTTd-LZACEw4yQvLeqgGX32iSpkMqNBpn14ZHMYVJkBpwl-qsU9pZJLb90_KYSxE1E7qYvAJmR-HVNc2Dv3EbcSpYWjqvjr59e2QZY4CTA42AdYM0TGWQik9zORNuAOEFuKF07oOrnD8nB8tF-pChCtzexG-86CxnJlhKji";
+const ensureUrl = (url?: string) => {
+  if (!url) return '';
+  if (url.startsWith('http') || url.startsWith('mailto:') || url.startsWith('tel:')) return url;
+  return `https://${url}`;
+};
+
+const cleanPhone = (phone?: string) => (phone ? phone.replace(/\D/g, '') : '');
 
 const Footer: React.FC = () => {
-    const { t } = useLanguage();
-    const [mapImg, setMapImg] = useState(FALLBACK_MAP);
+  const year = new Date().getFullYear();
+  const { config, loading } = useSiteConfig();
 
-    useEffect(() => {
-        supabase.from('section_images').select('image_url').eq('section_key', 'footer_map').single()
-            .then(({ data }) => { if (data?.image_url) setMapImg(data.image_url); });
-    }, []);
+  if (loading) return null; // O un skeleton simple
 
-    return (
-        <footer id="contacto" className="bg-background-light dark:bg-background-dark pt-16 sm:pt-20" role="contentinfo">
-            <div className="text-center mb-8 sm:mb-12 px-4">
-                <span className="text-primary text-xs font-bold tracking-[0.2em] uppercase">{t.footer.locationTag}</span>
-                <h2 className="font-display text-3xl sm:text-4xl text-stone-800 dark:text-stone-100 mt-2">{t.footer.howTo}</h2>
-            </div>
+  return (
+    <footer className="bg-background-dark text-white pt-16 pb-8 border-t border-white/5">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
 
-            <div className="w-full h-52 sm:h-80 grayscale opacity-80 hover:grayscale-0 transition-all duration-500 relative bg-stone-200 dark:bg-stone-800">
+          {/* Brand */}
+          <div>
+            <Link to="/" className="flex items-center gap-2 mb-6">
+              {config.logo_url ? (
                 <img
-                    alt="Mapa de ubicación de Cantar de la Tierra — Ciénaga, Magdalena, Colombia"
-                    className="w-full h-full object-cover"
-                    src={mapImg}
-                    loading="lazy"
-                    decoding="async"
+                  src={config.logo_url}
+                  alt="Cantar de la Tierra - Santuario Termal"
+                  className="h-24 md:h-32 w-auto object-contain"
+                  width="280"
+                  height="158"
                 />
-                <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="bg-white dark:bg-stone-900 p-3 sm:p-4 rounded shadow-lg flex items-center gap-2 sm:gap-3">
-                        <span className="material-icons-outlined text-accent text-2xl sm:text-3xl" aria-hidden="true">place</span>
-                        <div className="text-left">
-                            <p className="font-bold text-stone-800 dark:text-stone-100 text-xs sm:text-sm">Ciénaga, Magdalena</p>
-                            <p className="text-[10px] sm:text-xs text-stone-500">{t.footer.country}</p>
-                        </div>
-                    </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Sprout className="text-primary-light w-8 h-8" />
+                  <span className="text-xl font-bold tracking-wider font-display text-sand-light">CANTAR DE LA TIERRA</span>
                 </div>
+              )}
+            </Link>
+            <p className="text-text-main-dark/60 text-sm leading-relaxed mb-6 font-body">
+              Aguas termales naturales en el corazón de Colombia. Un espacio de sanación, bienestar y conexión con la naturaleza.
+            </p>
+            <div className="flex gap-4">
+              {config.facebook_url && (
+                <a href={ensureUrl(config.facebook_url)} target="_blank" rel="noopener noreferrer"
+                  className="w-9 h-9 rounded-full bg-white/5 hover:bg-primary/20 flex items-center justify-center text-text-main-dark/50 hover:text-primary-light transition-all">
+                  <Facebook className="w-4 h-4" />
+                </a>
+              )}
+              {config.instagram_url && (
+                <a href={ensureUrl(config.instagram_url)} target="_blank" rel="noopener noreferrer"
+                  className="w-9 h-9 rounded-full bg-white/5 hover:bg-primary/20 flex items-center justify-center text-text-main-dark/50 hover:text-primary-light transition-all">
+                  <Instagram className="w-4 h-4" />
+                </a>
+              )}
+              {config.whatsapp_number && (
+                <a href={`https://wa.me/${cleanPhone(config.whatsapp_number)}`} target="_blank" rel="noopener noreferrer"
+                  className="w-9 h-9 rounded-full bg-white/5 hover:bg-primary/20 flex items-center justify-center text-text-main-dark/50 hover:text-primary-light transition-all">
+                  <MessageCircle className="w-4 h-4" />
+                </a>
+              )}
             </div>
+          </div>
 
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col md:flex-row justify-between items-center gap-4 sm:gap-6 border-t border-stone-200 dark:border-stone-800 mt-8 sm:mt-10">
-                <div className="text-center md:text-left">
-                    <p className="font-display text-base sm:text-lg text-stone-800 dark:text-stone-200 font-bold mb-1">Cantar de la Tierra</p>
-                    <p className="text-stone-500 text-xs sm:text-sm">{t.footer.rights}</p>
-                </div>
-                <nav className="flex gap-6" aria-label="Redes sociales">
-                    <a href="#" className="text-stone-500 hover:text-primary transition-colors p-2" aria-label="Facebook">
-                        <span className="material-icons-outlined" aria-hidden="true">facebook</span>
-                    </a>
-                    <a href="#" className="text-stone-500 hover:text-primary transition-colors p-2" aria-label="Instagram">
-                        <span className="material-icons-outlined" aria-hidden="true">camera_alt</span>
-                    </a>
-                    <a href="#" className="text-stone-500 hover:text-primary transition-colors p-2" aria-label="Email">
-                        <span className="material-icons-outlined" aria-hidden="true">alternate_email</span>
-                    </a>
-                </nav>
-                <div className="text-stone-500 text-xs text-center md:text-right">
-                    <p>{t.footer.created}</p>
-                </div>
-            </div>
-        </footer>
-    );
+          {/* Navegación */}
+          <div>
+            <h4 className="text-sand font-bold uppercase tracking-wider mb-5 text-xs font-body">Navegación</h4>
+            <ul className="space-y-3 text-sm text-text-main-dark/60 font-body">
+              <li><Link to="/" className="hover:text-sand-light transition-colors">Inicio</Link></li>
+              <li><Link to="/servicios" className="hover:text-sand-light transition-colors">Servicios y Precios</Link></li>
+              <li><Link to="/galeria" className="hover:text-sand-light transition-colors">Galería</Link></li>
+              <li><Link to="/contacto" className="hover:text-sand-light transition-colors">Cómo Llegar / Contacto</Link></li>
+              <li><Link to="/backoffice/login" className="hover:text-primary-light transition-colors text-xs uppercase tracking-widest opacity-50">Admin</Link></li>
+            </ul>
+          </div>
+
+          {/* Contacto */}
+          <div>
+            <h4 className="text-sand font-bold uppercase tracking-wider mb-5 text-xs font-body">Contacto</h4>
+            <ul className="space-y-3 text-sm text-text-main-dark/60 font-body">
+              <li className="flex items-start gap-2">
+                <span className="text-primary-light mt-0.5">📍</span>
+                <span>{config.address || 'Corregimiento de Cordobita'}, {config.city || 'Ciénaga, Magdalena'}, Colombia</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-primary-light">📱</span>
+                <a href={`https://wa.me/${cleanPhone(config.whatsapp_number)}`} className="hover:text-sand-light transition-colors">
+                  {config.phone_display || `+${config.whatsapp_number}`}
+                </a>
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-primary-light">⏰</span>
+                <span>Lun – Dom: 6:00 am – 5:00 pm</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Bottom bar */}
+        <div className="border-t border-white/5 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-text-main-dark/40 font-body">
+          <p>© {year} Cantar de la Tierra. Todos los derechos reservados.</p>
+          <div className="flex gap-6">
+            <Link to="/privacidad" className="hover:text-sand-light transition-colors">Política de Privacidad</Link>
+            <Link to="/terminos" className="hover:text-sand-light transition-colors">Términos y Condiciones</Link>
+            <Link to="/datos-personales" className="hover:text-sand-light transition-colors">Tratamiento de Datos</Link>
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
 };
 
 export default Footer;
